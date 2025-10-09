@@ -8,6 +8,7 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY ingest.py ./
+COPY ingest.py schema.py alembic.ini ./
+COPY migrations ./migrations
 
 CMD ["python", "ingest.py"]

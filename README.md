@@ -18,14 +18,24 @@ This project provisions a PostgreSQL database and a Python-based ingestion job t
    - user: `defillama`
    - password: `defillama`
 
-2. Run the ingestion job:
+2. Apply database migrations (run this before each ingestion to pick up schema changes):
+   ```bash
+   docker compose run --rm ingestion alembic upgrade head
+   ```
+
+   To roll back the most recent migration if needed:
+   ```bash
+   docker compose run --rm ingestion alembic downgrade -1
+   ```
+
+3. Run the ingestion job:
    ```bash
    docker compose run --rm ingestion
    ```
 
-   The job waits for the database to become available, fetches the JSON payload from `https://yields.llama.fi/pools`, and upserts the data into the schema defined in [`db/init.sql`](db/init.sql).
+   The job waits for the database to become available, fetches the JSON payload from `https://yields.llama.fi/pools`, and upserts the data into the schema managed through Alembic migrations in [`ingestion/migrations`](ingestion/migrations).
 
-3. Inspect the data using any PostgreSQL client. For example, with `psql`:
+4. Inspect the data using any PostgreSQL client. For example, with `psql`:
    ```bash
    docker compose exec db psql -U defillama -d defillama
    select count(*) from pool_snapshots;
@@ -52,5 +62,5 @@ You can also create a `.env` file alongside the ingestion script to supply these
 
 ## Development notes
 
-- To run the ingester locally without Docker, install dependencies from [`ingestion/requirements.txt`](ingestion/requirements.txt) and execute `python ingestion/ingest.py`.
+- To run the ingester locally without Docker, install dependencies from [`ingestion/requirements.txt`](ingestion/requirements.txt) and execute `alembic -c ingestion/alembic.ini upgrade head` followed by `python ingestion/ingest.py`.
 - The ingestion job uses upsert logic so repeated executions will update existing rows for the same day rather than creating duplicates.

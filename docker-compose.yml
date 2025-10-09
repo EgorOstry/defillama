@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    container_name: defillama-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: defillama
+      POSTGRES_USER: defillama
+      POSTGRES_PASSWORD: defillama
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  ingestion:
+    build:
+      context: ./ingestion
+    environment:
+      DATABASE_URL: postgresql://defillama:defillama@db:5432/defillama
+      SOURCE_URL: https://yields.llama.fi/pools
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:

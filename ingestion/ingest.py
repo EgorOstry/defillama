@@ -37,6 +37,7 @@ LOGGER = logging.getLogger(__name__)
 
 DEFAULT_DATABASE_URL = "postgresql://defillama:defillama@localhost:5432/defillama"
 DEFAULT_SOURCE_URL = "https://yields.llama.fi/pools"
+DEFAULT_PROTOCOLS_URL = "https://api.llama.fi/protocols"
 
 METADATA = MetaData()
 
@@ -52,6 +53,33 @@ PROJECTS = Table(
     METADATA,
     Column("id", Integer, primary_key=True),
     Column("name", String, nullable=False, unique=True),
+    Column("slug", String, unique=True),
+    Column("symbol", String),
+    Column("chain", String),
+    Column("chains", ARRAY(String)),
+    Column("category", String),
+    Column("description", String),
+    Column("twitter", String),
+    Column("listed_at", DateTime(timezone=True)),
+    Column("tvl", Numeric),
+    Column("tvl_prev_day", Numeric),
+    Column("tvl_prev_week", Numeric),
+    Column("tvl_prev_month", Numeric),
+    Column("mcap", Numeric),
+    Column("fdv", Numeric),
+    Column("change_1h", Numeric),
+    Column("change_1d", Numeric),
+    Column("change_7d", Numeric),
+    Column("chain_tvls", JSONB),
+    Column("tokens", JSONB),
+    Column("audits", String),
+    Column("audit_note", String),
+    Column("forked_from", ARRAY(String)),
+    Column("oracles", ARRAY(String)),
+    Column("parent_protocols", ARRAY(String)),
+    Column("other_chains", ARRAY(String)),
+    Column("created_at", DateTime(timezone=True)),
+    Column("updated_at", DateTime(timezone=True)),
 )
 
 POOLS = Table(
@@ -139,6 +167,17 @@ def fetch_pools(source_url: str) -> List[Dict[str, Any]]:
     return data
 
 
+def fetch_protocols(source_url: str) -> List[Dict[str, Any]]:
+    LOGGER.info("Fetching protocol metadata from %s", source_url)
+    response = requests.get(source_url, timeout=30)
+    response.raise_for_status()
+    data = response.json()
+    if not isinstance(data, list):
+        raise ValueError("Unexpected protocol payload structure: expected a list")
+    LOGGER.info("Fetched %s protocol records", len(data))
+    return data
+
+
 def to_decimal(value: Any) -> Optional[Decimal]:
     if value is None:
         return None
@@ -150,6 +189,35 @@ def to_decimal(value: Any) -> Optional[Decimal]:
         return None
 
 
+def to_utc_datetime(value: Any) -> Optional[datetime]:
+    if value in (None, ""):
+        return None
+    try:
+        return datetime.fromtimestamp(int(value), tz=timezone.utc)
+    except (ValueError, TypeError, OSError, OverflowError):
+        return None
+
+
+def to_text_list(value: Any) -> Optional[List[str]]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        items = [value]
+    else:
+        try:
+            items = list(value)
+        except TypeError:
+            return None
+    normalized = [str(item) for item in items if item not in (None, "")]
+    return normalized or None
+
+
+def sanitize_json(value: Any) -> Any:
+    if value in (None, {}, []):
+        return None
+    return value
+
+
 def upsert_chain(connection, chain_name: str) -> int:
     statement = pg_insert(CHAINS).values(name=chain_name)
     statement = statement.on_conflict_do_update(
@@ -159,13 +227,84 @@ def upsert_chain(connection, chain_name: str) -> int:
     return connection.execute(statement).scalar_one()
 
 
-def upsert_project(connection, project_name: str) -> int:
-    statement = pg_insert(PROJECTS).values(name=project_name)
-    statement = statement.on_conflict_do_update(
+def ensure_project(connection, project_name: str) -> int:
+    insert_stmt = pg_insert(PROJECTS).values(
+        name=project_name,
+        updated_at=datetime.now(timezone.utc),
+    )
+    statement = insert_stmt.on_conflict_do_update(
         index_elements=[PROJECTS.c.name],
-        set_={"name": statement.excluded.name},
+        set_={"name": insert_stmt.excluded.name, "updated_at": func.now()},
     ).returning(PROJECTS.c.id)
     return connection.execute(statement).scalar_one()
+
+
+def upsert_project_metadata(connection, record: Dict[str, Any]) -> Optional[int]:
+    name = record.get("name")
+    if not name:
+        return None
+
+    audits = record.get("audits")
+    audit_note = record.get("audit_note")
+
+    values: Dict[str, Any] = {
+        "name": name,
+        "slug": record.get("slug"),
+        "symbol": record.get("symbol"),
+        "chain": record.get("chain"),
+        "chains": to_text_list(record.get("chains")),
+        "category": record.get("category"),
+        "description": record.get("description"),
+        "twitter": record.get("twitter"),
+        "listed_at": to_utc_datetime(record.get("listedAt")),
+        "tvl": to_decimal(record.get("tvl")),
+        "tvl_prev_day": to_decimal(record.get("tvlPrevDay")),
+        "tvl_prev_week": to_decimal(record.get("tvlPrevWeek")),
+        "tvl_prev_month": to_decimal(record.get("tvlPrevMonth")),
+        "mcap": to_decimal(record.get("mcap")),
+        "fdv": to_decimal(record.get("fdv")),
+        "change_1h": to_decimal(record.get("change_1h")),
+        "change_1d": to_decimal(record.get("change_1d")),
+        "change_7d": to_decimal(record.get("change_7d")),
+        "chain_tvls": sanitize_json(record.get("chainTvls")),
+        "tokens": sanitize_json(record.get("tokens")),
+        "audits": str(audits) if audits not in (None, "") else None,
+        "audit_note": audit_note if audit_note not in (None, "") else None,
+        "forked_from": to_text_list(record.get("forkedFrom")),
+        "oracles": to_text_list(record.get("oracles")),
+        "parent_protocols": to_text_list(record.get("parentProtocol")),
+        "other_chains": to_text_list(record.get("otherChains")),
+        "updated_at": datetime.now(timezone.utc),
+    }
+
+    insert_stmt = pg_insert(PROJECTS).values(**values)
+    update_values = values.copy()
+    update_values.pop("name", None)
+    update_values["updated_at"] = func.now()
+
+    statement = insert_stmt.on_conflict_do_update(
+        index_elements=[PROJECTS.c.name],
+        set_=update_values,
+    ).returning(PROJECTS.c.id)
+
+    return connection.execute(statement).scalar_one()
+
+
+def sync_projects(engine: Engine, protocols: Iterable[Dict[str, Any]]) -> int:
+    if not protocols:
+        return 0
+
+    upserted = 0
+    with engine.begin() as connection:
+        for record in protocols:
+            if not isinstance(record, dict):
+                continue
+            result = upsert_project_metadata(connection, record)
+            if result is not None:
+                upserted += 1
+
+    LOGGER.info("Upserted %s protocol metadata records", upserted)
+    return upserted
 
 
 def upsert_pool(connection, pool_id: str, chain_id: int, project_id: int, record: Dict[str, Any]) -> None:
@@ -287,7 +426,7 @@ def process_records(engine: Engine, records: Iterable[Dict[str, Any]]) -> int:
                 continue
 
             chain_id = upsert_chain(connection, chain)
-            project_id = upsert_project(connection, project)
+            project_id = ensure_project(connection, project)
             upsert_pool(connection, pool_id, chain_id, project_id, record)
             upsert_snapshot(connection, pool_id, record, snapshot_date, fetched_at)
             ingested += 1
@@ -298,6 +437,10 @@ def process_records(engine: Engine, records: Iterable[Dict[str, Any]]) -> int:
 def main() -> None:
     engine = get_engine()
     wait_for_database(engine)
+
+    protocols_url = os.getenv("PROTOCOLS_URL", DEFAULT_PROTOCOLS_URL)
+    protocol_records = fetch_protocols(protocols_url)
+    sync_projects(engine, protocol_records)
 
     source_url = os.getenv("SOURCE_URL", DEFAULT_SOURCE_URL)
     records = fetch_pools(source_url)

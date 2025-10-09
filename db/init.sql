@@ -7,8 +7,66 @@ CREATE TABLE IF NOT EXISTS chains (
 CREATE TABLE IF NOT EXISTS projects (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    slug TEXT UNIQUE,
+    symbol TEXT,
+    chain TEXT,
+    chains TEXT[],
+    category TEXT,
+    description TEXT,
+    twitter TEXT,
+    listed_at TIMESTAMPTZ,
+    tvl NUMERIC,
+    tvl_prev_day NUMERIC,
+    tvl_prev_week NUMERIC,
+    tvl_prev_month NUMERIC,
+    mcap NUMERIC,
+    fdv NUMERIC,
+    change_1h NUMERIC,
+    change_1d NUMERIC,
+    change_7d NUMERIC,
+    chain_tvls JSONB,
+    tokens JSONB,
+    audits TEXT,
+    audit_note TEXT,
+    forked_from TEXT[],
+    oracles TEXT[],
+    parent_protocols TEXT[],
+    other_chains TEXT[],
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS slug TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS symbol TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS chain TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS chains TEXT[];
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS category TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS twitter TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS listed_at TIMESTAMPTZ;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS tvl NUMERIC;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS tvl_prev_day NUMERIC;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS tvl_prev_week NUMERIC;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS tvl_prev_month NUMERIC;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS mcap NUMERIC;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS fdv NUMERIC;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS change_1h NUMERIC;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS change_1d NUMERIC;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS change_7d NUMERIC;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS chain_tvls JSONB;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS tokens JSONB;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS audits TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS audit_note TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS forked_from TEXT[];
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS oracles TEXT[];
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS parent_protocols TEXT[];
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS other_chains TEXT[];
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
+ALTER TABLE projects ALTER COLUMN updated_at SET DEFAULT NOW();
+UPDATE projects SET updated_at = NOW() WHERE updated_at IS NULL;
+ALTER TABLE projects ALTER COLUMN updated_at SET NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_slug ON projects(slug);
 
 CREATE TABLE IF NOT EXISTS pools (
     pool_id TEXT PRIMARY KEY,

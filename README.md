@@ -1,6 +1,6 @@
 # DeFiLlama Yield Pool Ingestion
 
-This project provisions a PostgreSQL database and a Python-based ingestion job that downloads yield pool data from [DeFiLlama](https://yields.llama.fi/pools) and stores it with a schema that supports daily snapshots and future dataset expansion.
+This project provisions a PostgreSQL database and a Python-based ingestion job that downloads yield pool data from [DeFiLlama](https://yields.llama.fi/pools) and stores it with a schema that supports daily snapshots and future dataset expansion. The job also enriches the `projects` dimension with protocol metadata from [https://api.llama.fi/protocols](https://api.llama.fi/protocols).
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ This project provisions a PostgreSQL database and a Python-based ingestion job t
 ## Schema overview
 
 - **chains**: master table of blockchain networks referenced by pools.
-- **projects**: master table of DeFi projects/protocols.
+- **projects**: master table of DeFi projects/protocols populated from the `https://api.llama.fi/protocols` endpoint. Stores identifiers (name, slug, symbol), categorical attributes (category, chains, audits), descriptive metadata, and aggregated TVL and market metrics used for analytics.
 - **pools**: metadata for each pool, keyed by the `pool` identifier from DeFiLlama. Stores exposure, risk, and token metadata.
 - **pool_snapshots**: daily snapshot metrics for each pool, enabling time-series queries and incremental refreshes.
 
@@ -45,7 +45,8 @@ The schema is designed for repeated daily loads and for future integration of ot
 Environment variables can override defaults:
 
 - `DATABASE_URL`: PostgreSQL connection string (defaults to `postgresql://defillama:defillama@db:5432/defillama` inside Docker).
-- `SOURCE_URL`: API endpoint to fetch (defaults to `https://yields.llama.fi/pools`).
+- `SOURCE_URL`: API endpoint for pool snapshots (defaults to `https://yields.llama.fi/pools`).
+- `PROTOCOLS_URL`: API endpoint for protocol metadata (defaults to `https://api.llama.fi/protocols`).
 
 You can also create a `.env` file alongside the ingestion script to supply these variables locally.
 
